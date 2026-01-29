@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: unimanager_prod_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-unimanager_db}
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+    networks:
+      - unimanager-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d unimanager_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: unimanager_prod_api
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-unimanager_db}
+      CLERK_ISSUER_URL: ${CLERK_ISSUER_URL}
+      # In production, specific allowed origins should be set
+      ALLOWED_ORIGINS: "http://localhost:3000" 
+    networks:
+      - unimanager-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: unimanager_prod_web
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000 # Client-side browser access
+    networks:
+      - unimanager-network
+
+networks:
+  unimanager-network:
+    driver: bridge
+
+volumes:
+  postgres_prod_data:
